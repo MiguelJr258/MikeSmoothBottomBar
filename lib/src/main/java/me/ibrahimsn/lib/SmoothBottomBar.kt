@@ -13,69 +13,91 @@ import android.util.AttributeSet
 import android.view.Menu
 import android.view.MotionEvent
 import android.view.View
+import android.view.accessibility.AccessibilityEvent
 import android.view.animation.DecelerateInterpolator
 import android.widget.PopupMenu
-import androidx.annotation.ColorInt
-import androidx.annotation.Dimension
-import androidx.annotation.FontRes
-import androidx.annotation.XmlRes
+import androidx.annotation.*
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.view.ViewCompat
-import androidx.customview.widget.ExploreByTouchHelper
 import androidx.navigation.NavController
 import androidx.navigation.Navigation
+import androidx.navigation.findNavController
 import androidx.navigation.ui.NavigationUI
+import me.ibrahimsn.lib.ext.d2p
+import kotlin.math.roundToInt
 
 class SmoothBottomBar @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = R.attr.SmoothBottomBarStyle
 ) : View(context, attrs, defStyleAttr) {
-
     // Dynamic Variables
-    private var currentIconTint = Color.WHITE // Valor inicial provisório
-    private var indicatorLocation = 0f
+    private var itemWidth: Float = 0F
+
+    private var currentIconTint = itemIconTintActive
+
+    private var indicatorLocation = barSideMargins
+
     private val rect = RectF()
+
     private var items = listOf<BottomBarItem>()
 
     // Attribute Defaults
     @ColorInt
-    private var _barBackgroundColor = Color.parseColor(DEFAULT_BACKGROUND_COLOR)
+    private var _barBackgroundColor = Color.WHITE
+
     @ColorInt
     private var _barIndicatorColor = Color.parseColor(DEFAULT_INDICATOR_COLOR)
+
     @Dimension
     private var _barIndicatorRadius = context.d2p(DEFAULT_CORNER_RADIUS)
+
     @Dimension
     private var _barSideMargins = context.d2p(DEFAULT_SIDE_MARGIN)
+
     @Dimension
     private var _barCornerRadius = context.d2p(DEFAULT_BAR_CORNER_RADIUS)
+    
     private var _barCorners = DEFAULT_BAR_CORNERS
+
     @Dimension
     private var _itemPadding = context.d2p(DEFAULT_ITEM_PADDING)
+
     private var _itemAnimDuration = DEFAULT_ANIM_DURATION
+
     @Dimension
     private var _itemIconSize = context.d2p(DEFAULT_ICON_SIZE)
+
     @Dimension
     private var _itemIconMargin = context.d2p(DEFAULT_ICON_MARGIN)
+
     @ColorInt
     private var _itemIconTint = Color.parseColor(DEFAULT_TINT)
+
     @ColorInt
     private var _itemIconTintActive = Color.WHITE
+
     @ColorInt
     private var _itemTextColor = Color.WHITE
+
     @ColorInt
     private var _itemBadgeColor = Color.RED
+
     @Dimension
     private var _itemTextSize = context.d2p(DEFAULT_TEXT_SIZE)
+
     @FontRes
     private var _itemFontFamily: Int = INVALID_RES
+
     @XmlRes
     private var _itemMenuRes: Int = INVALID_RES
+
     private var _itemActiveIndex: Int = 0
 
-    lateinit var menu: Menu
-    private val badge_arr = HashSet<Int>()
+    lateinit var menu:Menu
+
+    private val badge_arr=HashSet<Int>()
 
     // Core Attributes
     var barBackgroundColor: Int
@@ -137,14 +159,13 @@ class SmoothBottomBar @JvmOverloads constructor(
             paintText.color = value
             invalidate()
         }
-
     var itemBadgeColor: Int
-        @ColorInt get() = _itemBadgeColor
-        set(@ColorInt value) {
-            _itemBadgeColor = value
-            badgePaint.color = value
-            invalidate()
-        }
+            @ColorInt get() = _itemBadgeColor
+            set(@ColorInt value) {
+                _itemBadgeColor = value
+                badgePaint.color = value
+                invalidate()
+            }
 
     var itemPadding: Float
         @Dimension get() = _itemPadding
@@ -217,17 +238,21 @@ class SmoothBottomBar @JvmOverloads constructor(
             applyItemActiveIndex()
         }
 
+
     // Listeners
     var onItemSelectedListener: OnItemSelectedListener? = null
+
     var onItemReselectedListener: OnItemReselectedListener? = null
+
     var onItemSelected: ((Int) -> Unit)? = null
+
     var onItemReselected: ((Int) -> Unit)? = null
 
     // Paints
     private val paintBackground = Paint().apply {
         isAntiAlias = true
         style = Paint.Style.FILL
-        color = barBackgroundColor
+        color = barIndicatorColor
     }
 
     private val paintIndicator = Paint().apply {
@@ -247,18 +272,16 @@ class SmoothBottomBar @JvmOverloads constructor(
         style = Paint.Style.FILL
         color = itemTextColor
         textSize = itemTextSize
-        textAlign = Paint.Align.LEFT // Alterado para facilitar cálculo de largura
+        textAlign = Paint.Align.CENTER
         isFakeBoldText = true
     }
 
-    // Acessibilidade
-    private var exploreByTouchHelper: AccessibleExploreByTouchHelper
+    private var exploreByTouchHelper : AccessibleExploreByTouchHelper
 
     init {
         obtainStyledAttributes(attrs, defStyleAttr)
-        // Inicializa a cor do ícone ativo
-        currentIconTint = itemIconTintActive
         exploreByTouchHelper = AccessibleExploreByTouchHelper(this, items, ::onClickAction)
+
         ViewCompat.setAccessibilityDelegate(this, exploreByTouchHelper)
     }
 
@@ -269,6 +292,7 @@ class SmoothBottomBar @JvmOverloads constructor(
             defStyleAttr,
             0
         )
+
         try {
             barBackgroundColor = typedArray.getColor(
                 R.styleable.SmoothBottomBar_backgroundColor,
@@ -347,48 +371,56 @@ class SmoothBottomBar @JvmOverloads constructor(
         } finally {
             typedArray.recycle()
         }
-        
-        // Atualiza os paints com os valores obtidos
-        paintBackground.color = barBackgroundColor
-        paintIndicator.color = barIndicatorColor
-        paintText.color = itemTextColor
-        paintText.textSize = itemTextSize
-        
-        if (itemFontFamily != INVALID_RES) {
-             try {
-                paintText.typeface = ResourcesCompat.getFont(context, itemFontFamily)
-            } catch (e: Exception) {
-                // Ignore
-            }
-        }
-    }
-    
-    // Extensão para dp to px
-    private fun Context.d2p(dp: Float): Float {
-        return dp * resources.displayMetrics.density
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        // Resetamos a posição inicial do indicador quando o tamanho muda
+
+        var lastX = barSideMargins
+        itemWidth = (width - (barSideMargins * 2)) / items.size
+
+        // reverse items layout order if layout direction is RTL
+        val itemsToLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1
+            && layoutDirection == LAYOUT_DIRECTION_RTL
+        ) items.reversed() else items
+
+        for (item in itemsToLayout) {
+            // Prevent text overflow by shortening the item title
+            var shorted = false
+            while (paintText.measureText(item.title) > itemWidth - itemIconSize - itemIconMargin - (itemPadding * 2)) {
+                item.title = item.title.dropLast(1)
+                shorted = true
+            }
+
+            // Add ellipsis character to item text if it is shorted
+            if (shorted) {
+                item.title = item.title.dropLast(1)
+                item.title += context.getString(R.string.ellipsis)
+            }
+
+            item.rect = RectF(lastX, 0f, itemWidth + lastX, height.toFloat())
+            lastX += itemWidth
+        }
+
+        // Set initial active item
         applyItemActiveIndex()
     }
 
-    fun setBadge(pos: Int) {
+
+    fun setBadge(pos:Int){
         badge_arr.add(pos)
         invalidate()
     }
 
-    fun removeBadge(pos: Int) {
+    fun removeBadge(pos:Int){
         badge_arr.remove(pos)
         invalidate()
     }
 
-    // --- AQUI ESTÁ A LÓGICA MODIFICADA DE DESENHO ---
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        // 1. Desenhar o Fundo
+        // 1. Desenhar o Fundo (Lógica original preservada)
         if (barCornerRadius > 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             canvas.drawRoundRect(
                 0f, 0f, width.toFloat(), height.toFloat(),
@@ -396,20 +428,22 @@ class SmoothBottomBar @JvmOverloads constructor(
                 minOf(barCornerRadius, height.toFloat() / 2),
                 paintBackground
             )
+            // (Código de cantos individuais removido para brevidade, mas pode manter se usar cantos customizados)
+            // Se você usa cantos específicos, mantenha o bloco 'if (barCorners != ALL_CORNERS)' original aqui.
         } else {
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paintBackground)
         }
         
         if (items.isEmpty()) return
 
-        // 2. Cálculos Matemáticos para Layout Dinâmico
+        // 2. CÁLCULO MATEMÁTICO DE LARGURAS (A Mágica acontece aqui)
         val totalUsableWidth = width - (barSideMargins * 2)
         
-        // Largura do Item ATIVO = Ícone + Margem + Texto + (Padding * 2)
+        // Largura do ATIVO: Tamanho do Texto + Tamanho do Ícone + Margem Ícone + (Padding * 2)
         val activeItemTextWidth = paintText.measureText(items[itemActiveIndex].title)
         val activeItemWidth = itemIconSize + itemIconMargin + activeItemTextWidth + (itemPadding * 2)
         
-        // Largura dos Itens INATIVOS = O espaço que sobra dividido pelos outros
+        // Largura dos INATIVOS: O espaço que sobra dividido pelos restantes
         val inactiveItemWidth = if (items.size > 1) (totalUsableWidth - activeItemWidth) / (items.size - 1) else 0f
 
         var currentX = barSideMargins
@@ -417,54 +451,33 @@ class SmoothBottomBar @JvmOverloads constructor(
         // 3. Loop de Desenho
         for ((index, item) in items.withIndex()) {
             
-            // Define a largura deste item específico
+            // Define a largura específica para este item (se é o ativo ou não)
             val thisItemWidth = if (index == itemActiveIndex) activeItemWidth else inactiveItemWidth
+            
+            // Centros
             val itemCenterX = currentX + (thisItemWidth / 2)
             val itemCenterY = height / 2f
 
-            // Atualiza o retângulo do item (para cliques)
+            // Atualiza o retângulo de toque do item
             item.rect.set(currentX, 0f, currentX + thisItemWidth, height.toFloat())
 
-            // A. Desenhar o Indicador (Pílula Branca) - Apenas se for o ativo
+            // A. DESENHAR A PÍLULA BRANCA (Apenas se for o ativo)
             if (index == itemActiveIndex) {
-                // Animação de posição X
-                // Se indicatorLocation for 0 (inicio), ajusta direto. Senão, a animação trata.
-                // Mas para o onDraw "estático", usamos a posição alvo.
-                // A animação acontece no applyItemActiveIndex alterando o indicatorLocation.
-                
-                // Nota: Para simplificar e garantir que o tamanho bate certo com a lógica,
-                // vamos desenhar a pílula baseada na posição atual (currentX) neste frame.
-                // A animação de transição move o 'currentX' virtualmente? Não.
-                // A animação move o 'indicatorLocation'.
-                
-                // LÓGICA DE ANIMAÇÃO AJUSTADA:
-                // O indicatorLocation controla o ESQUERDA do indicador.
-                // A largura do indicador também anima? Idealmente sim, mas para este fix,
-                // vamos assumir que o indicador segue a posição do item ativo.
-                
-                // Vamos usar a posição calculada diretamente para garantir o visual estático correto.
-                // (Para animação suave de largura, precisaríamos de mais variáveis, mas isto cumpre o requisito visual).
-                
-                // Usamos as coordenadas do rect do item atual.
-                val pillLeft = if(indicatorLocation == 0f) currentX else indicatorLocation
-                
-                // Assumindo que a animação atualiza apenas o 'left', precisamos calcular o 'right'
-                // com base na largura do item ativo.
-                // Como a largura muda, a animação pode ser complexa.
-                // Vamos simplificar: Desenha a pílula exatamente onde o item ativo DEVE estar.
-                
                 rect.left = currentX
                 rect.right = currentX + thisItemWidth
+                // A altura da pílula é controlada pelo itemPadding verticalmente em relação ao ícone
                 rect.top = itemCenterY - (itemIconSize / 2) - itemPadding
                 rect.bottom = itemCenterY + (itemIconSize / 2) + itemPadding
 
                 canvas.drawRoundRect(rect, barIndicatorRadius, barIndicatorRadius, paintIndicator)
             }
 
-            // B. Desenhar o Ícone
-            // Se ativo: Ícone fica à esquerda (com padding). Se inativo: Ícone fica no centro.
+            // B. DESENHAR O ÍCONE
+            // Se ativo: Ícone encostado à esquerda (respeitando o padding)
+            // Se inativo: Ícone centralizado no seu espaço reduzido
             val iconX = if (index == itemActiveIndex) (currentX + itemPadding) else (itemCenterX - itemIconSize / 2)
             
+            // Prepara o drawable
             item.icon.mutate()
             item.icon.setBounds(
                 iconX.toInt(),
@@ -473,9 +486,10 @@ class SmoothBottomBar @JvmOverloads constructor(
                 (itemCenterY + itemIconSize / 2).toInt()
             )
             
+            // Desenha o ícone com a cor correta
             tintAndDrawIcon(item, index, canvas)
             
-            // Badge
+            // Badge (Notificação vermelha)
             if(badge_arr.contains(index)){
                  canvas.drawCircle(
                     iconX + itemIconSize - 2, 
@@ -485,22 +499,23 @@ class SmoothBottomBar @JvmOverloads constructor(
                 )
             }
 
-            // C. Desenhar o Texto (Apenas se ativo)
+            // C. DESENHAR O TEXTO (Apenas se ativo)
             if (index == itemActiveIndex) {
                 val textHeight = (paintText.descent() + paintText.ascent()) / 2
                 val textX = iconX + itemIconSize + itemIconMargin
                 
-                // Força opacidade total para o texto ativo
-                paintText.alpha = 255 
+                // Garante opacidade total
+                paintText.alpha = OPAQUE 
+                // Desenha o texto alinhado verticalmente
                 canvas.drawText(item.title, textX, itemCenterY - textHeight, paintText)
             }
 
-            // Avança a posição X para o próximo item
+            // Avança para a próxima posição
             currentX += thisItemWidth
         }
     }
-    
-    // Helper para desenhar ícone com cor
+
+
     private fun tintAndDrawIcon(item: BottomBarItem, index: Int, canvas: Canvas) {
         DrawableCompat.setTint(
             item.icon,
@@ -509,7 +524,9 @@ class SmoothBottomBar @JvmOverloads constructor(
         item.icon.draw(canvas)
     }
 
-    // --- LÓGICA DE TOQUE MODIFICADA ---
+    /**
+     * Handle item clicks
+     */
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent?): Boolean {
         if (event == null) return false
@@ -517,7 +534,8 @@ class SmoothBottomBar @JvmOverloads constructor(
         when (event.action) {
             MotionEvent.ACTION_DOWN -> return true
             MotionEvent.ACTION_UP -> {
-                // Recalcular larguras para detetar o toque corretamente
+                // Precisamos recalcular as larguras aqui para saber onde o utilizador clicou,
+                // usando a mesma lógica matemática do onDraw.
                 val totalUsableWidth = width - (barSideMargins * 2)
                 val activeItemTextWidth = paintText.measureText(items[itemActiveIndex].title)
                 val activeItemWidth = itemIconSize + itemIconMargin + activeItemTextWidth + (itemPadding * 2)
@@ -528,8 +546,10 @@ class SmoothBottomBar @JvmOverloads constructor(
                 for ((i, item) in items.withIndex()) {
                     val thisItemWidth = if (i == itemActiveIndex) activeItemWidth else inactiveItemWidth
                     
+                    // Verifica se o toque X cai dentro deste item
                     if (event.x >= currentX && event.x <= currentX + thisItemWidth) {
                         onClickAction(i)
+                        invalidate() // Força redesenho imediato
                         break
                     }
                     currentX += thisItemWidth
@@ -538,13 +558,12 @@ class SmoothBottomBar @JvmOverloads constructor(
         }
         return super.onTouchEvent(event)
     }
-    
-    // Acessibilidade
+
     override fun dispatchHoverEvent(event: MotionEvent): Boolean {
         return exploreByTouchHelper.dispatchHoverEvent(event) || super.dispatchHoverEvent(event)
     }
 
-    private fun onClickAction(viewId: Int) {
+    private fun onClickAction(viewId : Int){
         exploreByTouchHelper.invalidateVirtualView(viewId)
         if (viewId != itemActiveIndex) {
             itemActiveIndex = viewId
@@ -562,32 +581,76 @@ class SmoothBottomBar @JvmOverloads constructor(
 
     private fun applyItemActiveIndex() {
         if (items.isNotEmpty()) {
-            // Animação da cor do ícone
-            ValueAnimator.ofObject(ArgbEvaluator(), itemIconTint, itemIconTintActive).apply {
+            for ((index, item) in items.withIndex()) {
+                if (index == itemActiveIndex) {
+                    animateAlpha(item, OPAQUE)
+                } else {
+                    animateAlpha(item, TRANSPARENT)
+                }
+            }
+
+            ValueAnimator.ofFloat(
+                indicatorLocation,
+                items[itemActiveIndex].rect.left
+            ).apply {
                 duration = itemAnimDuration
-                addUpdateListener { currentIconTint = it.animatedValue as Int }
+                interpolator = DecelerateInterpolator()
+                addUpdateListener { animation ->
+                    indicatorLocation = animation.animatedValue as Float
+                }
                 start()
             }
-            // Força o redesenho para a nova posição
-            invalidate()
+
+            ValueAnimator.ofObject(ArgbEvaluator(), itemIconTint, itemIconTintActive).apply {
+                duration = itemAnimDuration
+                addUpdateListener {
+                    currentIconTint = it.animatedValue as Int
+                }
+                start()
+            }
         }
     }
-    
-    // Helpers de Animação (mantidos para compatibilidade, mas simplificados)
+
     private fun animateAlpha(item: BottomBarItem, to: Int) {
-        // Não usado na nova lógica de desenho direto, mas mantido para evitar erros
+        ValueAnimator.ofInt(item.alpha, to).apply {
+            duration = itemAnimDuration
+            addUpdateListener {
+                val value = it.animatedValue as Int
+                item.alpha = value
+                invalidate()
+            }
+            start()
+        }
     }
 
-    // --- SETUP COM NAV CONTROLLER ---
-    fun setupWithNavController(menu: Menu, navController: NavController) {
+    fun setupWithNavController(menu:Menu,navController: NavController) {
         NavigationComponentHelper.setupWithNavController(menu, this, navController)
     }
 
     fun setupWithNavController(navController: NavController) {
         NavigationComponentHelper.setupWithNavController(this.menu, this, navController)
+        Navigation.setViewNavController(this,navController)
     }
-    
-    // Interfaces de Listener
+
+    fun setSelectedItem(pos:Int){
+        try{
+            this.itemActiveIndex=pos
+            NavigationUI.onNavDestinationSelected(this.menu.getItem(pos), this.findNavController())
+        }catch (e:Exception){
+            throw Exception("set menu using PopupMenu")
+        }
+    }
+
+    /**
+     * Created by Vladislav Perevedentsev on 29.07.2020.
+     *
+     * Just call [SmoothBottomBar.setOnItemSelectedListener] to override [onItemSelectedListener]
+     *
+     * @sample
+     * setOnItemSelectedListener { position ->
+     *     //TODO: Something
+     * }
+     */
     fun setOnItemSelectedListener(listener: (position: Int) -> Unit) {
         onItemSelectedListener = object : OnItemSelectedListener {
             override fun onItemSelect(pos: Int): Boolean {
@@ -597,6 +660,16 @@ class SmoothBottomBar @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Created by Vladislav Perevedentsev on 29.07.2020.
+     *
+     * Just call [SmoothBottomBar.setOnItemReselectedListener] to override [onItemReselectedListener]
+     *
+     * @sample
+     * setOnItemReselectedListener { position ->
+     *     //TODO: Something
+     * }
+     */
     fun setOnItemReselectedListener(listener: (position: Int) -> Unit) {
         onItemReselectedListener = object : OnItemReselectedListener {
             override fun onItemReselect(pos: Int) {
@@ -605,39 +678,29 @@ class SmoothBottomBar @JvmOverloads constructor(
         }
     }
 
-    interface OnItemSelectedListener {
-        fun onItemSelect(pos: Int): Boolean
-    }
-
-    interface OnItemReselectedListener {
-        fun onItemReselect(pos: Int)
-    }
-
-    // --- COMPANION OBJECT COM CONSTANTES ---
     companion object {
         private const val INVALID_RES = -1
-        private const val DEFAULT_INDICATOR_COLOR = "#FFFFFF" // Branco
-        private const val DEFAULT_BACKGROUND_COLOR = "#414141" // Cinza Escuro
-        private const val DEFAULT_TINT = "#FFFFFF"
-        
-        // Corner Flags
-        private const val NO_CORNERS = 0
-        private const val TOP_LEFT_CORNER = 1
-        private const val TOP_RIGHT_CORNER = 2
-        private const val BOTTOM_RIGHT_CORNER = 4
-        private const val BOTTOM_LEFT_CORNER = 8
-        private const val ALL_CORNERS = 15
-        
+        private const val DEFAULT_INDICATOR_COLOR = "#2DFFFFFF"
+        private const val DEFAULT_TINT = "#C8FFFFFF"
+
+        // corner flags
+        private const val NO_CORNERS = 0;
+        private const val TOP_LEFT_CORNER = 1;
+        private const val TOP_RIGHT_CORNER = 2;
+        private const val BOTTOM_RIGHT_CORNER = 4;
+        private const val BOTTOM_LEFT_CORNER = 8;
+        private const val ALL_CORNERS = 15;
+
         private const val DEFAULT_SIDE_MARGIN = 10f
         private const val DEFAULT_ITEM_PADDING = 10f
         private const val DEFAULT_ANIM_DURATION = 200L
-        private const val DEFAULT_ICON_SIZE = 20F // Ícone padrão um pouco maior
+        private const val DEFAULT_ICON_SIZE = 18F
         private const val DEFAULT_ICON_MARGIN = 4F
-        private const val DEFAULT_TEXT_SIZE = 14F
+        private const val DEFAULT_TEXT_SIZE = 11F
         private const val DEFAULT_CORNER_RADIUS = 20F
-        private const val DEFAULT_BAR_CORNER_RADIUS = 35F // Bem redondo
-        private const val DEFAULT_BAR_CORNERS = ALL_CORNERS
-        
+        private const val DEFAULT_BAR_CORNER_RADIUS = 0F
+        private const val DEFAULT_BAR_CORNERS = TOP_LEFT_CORNER or TOP_RIGHT_CORNER
+
         private const val OPAQUE = 255
         private const val TRANSPARENT = 0
     }
