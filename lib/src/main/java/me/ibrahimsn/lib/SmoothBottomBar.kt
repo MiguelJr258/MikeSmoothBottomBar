@@ -417,10 +417,10 @@ class SmoothBottomBar @JvmOverloads constructor(
         invalidate()
     }
 
-    override fun onDraw(canvas: Canvas) {
+override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        // 1. Desenhar o Fundo (Lógica original preservada)
+        // 1. Desenhar o Fundo (Lógica original mantida)
         if (barCornerRadius > 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             canvas.drawRoundRect(
                 0f, 0f, width.toFloat(), height.toFloat(),
@@ -428,15 +428,14 @@ class SmoothBottomBar @JvmOverloads constructor(
                 minOf(barCornerRadius, height.toFloat() / 2),
                 paintBackground
             )
-            // (Código de cantos individuais removido para brevidade, mas pode manter se usar cantos customizados)
-            // Se você usa cantos específicos, mantenha o bloco 'if (barCorners != ALL_CORNERS)' original aqui.
+            // (Se precisar desenhar cantos específicos, mantenha o bloco 'if (barCorners != ALL_CORNERS)' original aqui)
         } else {
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paintBackground)
         }
         
         if (items.isEmpty()) return
 
-        // 2. CÁLCULO MATEMÁTICO DE LARGURAS (A Mágica acontece aqui)
+        // 2. CÁLCULOS DE LARGURA DINÂMICA
         val totalUsableWidth = width - (barSideMargins * 2)
         
         // Largura do ATIVO: Tamanho do Texto + Tamanho do Ícone + Margem Ícone + (Padding * 2)
@@ -444,28 +443,30 @@ class SmoothBottomBar @JvmOverloads constructor(
         val activeItemWidth = itemIconSize + itemIconMargin + activeItemTextWidth + (itemPadding * 2)
         
         // Largura dos INATIVOS: O espaço que sobra dividido pelos restantes
+        // Isso faz com que eles fiquem mais próximos ("espremidos")
         val inactiveItemWidth = if (items.size > 1) (totalUsableWidth - activeItemWidth) / (items.size - 1) else 0f
 
         var currentX = barSideMargins
 
-        // 3. Loop de Desenho
+        // 3. Loop de Desenho dos Itens
         for ((index, item) in items.withIndex()) {
             
-            // Define a largura específica para este item (se é o ativo ou não)
+            // Define a largura específica para este item
             val thisItemWidth = if (index == itemActiveIndex) activeItemWidth else inactiveItemWidth
             
             // Centros
             val itemCenterX = currentX + (thisItemWidth / 2)
             val itemCenterY = height / 2f
 
-            // Atualiza o retângulo de toque do item
+            // Atualiza o retângulo de toque do item (Crucial para o onTouchEvent funcionar depois)
             item.rect.set(currentX, 0f, currentX + thisItemWidth, height.toFloat())
 
             // A. DESENHAR A PÍLULA BRANCA (Apenas se for o ativo)
             if (index == itemActiveIndex) {
+                // Desenhamos a pílula exatamente onde o item ativo está calculado para estar
                 rect.left = currentX
                 rect.right = currentX + thisItemWidth
-                // A altura da pílula é controlada pelo itemPadding verticalmente em relação ao ícone
+                // A altura é controlada pelo itemPadding verticalmente
                 rect.top = itemCenterY - (itemIconSize / 2) - itemPadding
                 rect.bottom = itemCenterY + (itemIconSize / 2) + itemPadding
 
@@ -473,11 +474,10 @@ class SmoothBottomBar @JvmOverloads constructor(
             }
 
             // B. DESENHAR O ÍCONE
-            // Se ativo: Ícone encostado à esquerda (respeitando o padding)
-            // Se inativo: Ícone centralizado no seu espaço reduzido
+            // Se ativo: Ícone fica à esquerda (com padding). 
+            // Se inativo: Ícone centralizado no seu espaço reduzido.
             val iconX = if (index == itemActiveIndex) (currentX + itemPadding) else (itemCenterX - itemIconSize / 2)
             
-            // Prepara o drawable
             item.icon.mutate()
             item.icon.setBounds(
                 iconX.toInt(),
@@ -486,7 +486,7 @@ class SmoothBottomBar @JvmOverloads constructor(
                 (itemCenterY + itemIconSize / 2).toInt()
             )
             
-            // Desenha o ícone com a cor correta
+            // Desenha o ícone
             tintAndDrawIcon(item, index, canvas)
             
             // Badge (Notificação vermelha)
@@ -506,17 +506,16 @@ class SmoothBottomBar @JvmOverloads constructor(
                 
                 // Garante opacidade total
                 paintText.alpha = OPAQUE 
-                // Desenha o texto alinhado verticalmente
+                // Desenha o texto alinhado à esquerda do espaço disponível
                 canvas.drawText(item.title, textX, itemCenterY - textHeight, paintText)
             }
 
-            // Avança para a próxima posição
+            // Avança a posição X para o próximo item
             currentX += thisItemWidth
         }
     }
 
-
-    private fun tintAndDrawIcon(item: BottomBarItem, index: Int, canvas: Canvas) {
+private fun tintAndDrawIcon(item: BottomBarItem, index: Int, canvas: Canvas) {
         DrawableCompat.setTint(
             item.icon,
             if (index == itemActiveIndex) currentIconTint else itemIconTint
@@ -527,15 +526,14 @@ class SmoothBottomBar @JvmOverloads constructor(
     /**
      * Handle item clicks
      */
-    @SuppressLint("ClickableViewAccessibility")
+@SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent?): Boolean {
         if (event == null) return false
         
         when (event.action) {
             MotionEvent.ACTION_DOWN -> return true
             MotionEvent.ACTION_UP -> {
-                // Precisamos recalcular as larguras aqui para saber onde o utilizador clicou,
-                // usando a mesma lógica matemática do onDraw.
+                // Recalcular larguras para detetar o toque corretamente
                 val totalUsableWidth = width - (barSideMargins * 2)
                 val activeItemTextWidth = paintText.measureText(items[itemActiveIndex].title)
                 val activeItemWidth = itemIconSize + itemIconMargin + activeItemTextWidth + (itemPadding * 2)
@@ -549,7 +547,7 @@ class SmoothBottomBar @JvmOverloads constructor(
                     // Verifica se o toque X cai dentro deste item
                     if (event.x >= currentX && event.x <= currentX + thisItemWidth) {
                         onClickAction(i)
-                        invalidate() // Força redesenho imediato
+                        invalidate() // Força redesenho imediato para atualizar o layout
                         break
                     }
                     currentX += thisItemWidth
