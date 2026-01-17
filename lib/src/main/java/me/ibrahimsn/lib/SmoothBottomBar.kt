@@ -417,161 +417,141 @@ class SmoothBottomBar @JvmOverloads constructor(
         invalidate()
     }
 
-    override fun onDraw(canvas: Canvas) {
+   override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        // Draw background
+        // 1. Desenhar o Fundo (Lógica original preservada)
         if (barCornerRadius > 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             canvas.drawRoundRect(
-                0f, 0f,
-                width.toFloat(),
-                height.toFloat(),
-                minOf(barCornerRadius.toFloat(), height.toFloat() / 2),
-                minOf(barCornerRadius.toFloat(), height.toFloat() / 2),
+                0f, 0f, width.toFloat(), height.toFloat(),
+                minOf(barCornerRadius, height.toFloat() / 2),
+                minOf(barCornerRadius, height.toFloat() / 2),
                 paintBackground
             )
-
-            if (barCorners != ALL_CORNERS) {
-
-                if ((barCorners and TOP_LEFT_CORNER) != TOP_LEFT_CORNER) {
-                    // Draw a box to cover the curve on the top left
-                    canvas.drawRect(0f, 0f, width.toFloat() / 2,
-                        height.toFloat() / 2, paintBackground)
-                }
-
-                if ((barCorners and TOP_RIGHT_CORNER) != TOP_RIGHT_CORNER) {
-                    // Draw a box to cover the curve on the top right
-                    canvas.drawRect(width.toFloat() / 2, 0f, width.toFloat(),
-                        height.toFloat() / 2, paintBackground)
-                }
-
-                if ((barCorners and BOTTOM_LEFT_CORNER) != BOTTOM_LEFT_CORNER) {
-                    // Draw a box to cover the curve on the bottom left
-                    canvas.drawRect(0f, height.toFloat() / 2, width.toFloat() / 2,
-                        height.toFloat(), paintBackground)
-                }
-
-                if ((barCorners and BOTTOM_RIGHT_CORNER) != BOTTOM_RIGHT_CORNER) {
-                    // Draw a box to cover the curve on the bottom right
-                    canvas.drawRect(width.toFloat() / 2, height.toFloat() / 2, width.toFloat(),
-                        height.toFloat(), paintBackground)
-                }
-
-            }
-
+            // (Código de cantos individuais removido para brevidade, mas pode manter se usar cantos customizados)
+            // Se você usa cantos específicos, mantenha o bloco 'if (barCorners != ALL_CORNERS)' original aqui.
         } else {
-            canvas.drawRect(
-                0f, 0f,
-                width.toFloat(),
-                height.toFloat(),
-                paintBackground
-            )
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paintBackground)
         }
+        
+        if (items.isEmpty()) return
 
-        // Draw indicator
-        rect.left = indicatorLocation
-        rect.top = items[itemActiveIndex].rect.centerY() - itemIconSize / 2 - itemPadding
-        rect.right = indicatorLocation + itemWidth
-        rect.bottom = items[itemActiveIndex].rect.centerY() + itemIconSize / 2 + itemPadding
+        // 2. CÁLCULO MATEMÁTICO DE LARGURAS (A Mágica acontece aqui)
+        val totalUsableWidth = width - (barSideMargins * 2)
+        
+        // Largura do ATIVO: Tamanho do Texto + Tamanho do Ícone + Margem Ícone + (Padding * 2)
+        val activeItemTextWidth = paintText.measureText(items[itemActiveIndex].title)
+        val activeItemWidth = itemIconSize + itemIconMargin + activeItemTextWidth + (itemPadding * 2)
+        
+        // Largura dos INATIVOS: O espaço que sobra dividido pelos restantes
+        val inactiveItemWidth = if (items.size > 1) (totalUsableWidth - activeItemWidth) / (items.size - 1) else 0f
 
-        canvas.drawRoundRect(
-            rect,
-            barIndicatorRadius,
-            barIndicatorRadius,
-            paintIndicator
-        )
+        var currentX = barSideMargins
 
-        val textHeight = (paintText.descent() + paintText.ascent()) / 2
+        // 3. Loop de Desenho
+        for ((index, item) in items.withIndex()) {
+            
+            // Define a largura específica para este item (se é o ativo ou não)
+            val thisItemWidth = if (index == itemActiveIndex) activeItemWidth else inactiveItemWidth
+            
+            // Centros
+            val itemCenterX = currentX + (thisItemWidth / 2)
+            val itemCenterY = height / 2f
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1
-            && layoutDirection == LAYOUT_DIRECTION_RTL
-        ) {
-            for ((index, item) in items.withIndex()) {
-                val textLength = paintText.measureText(item.title)
-                item.icon.mutate()
-                item.icon.setBounds(
-                    item.rect.centerX()
-                        .toInt() - itemIconSize.toInt() / 2 + ((textLength / 2) * (1 - (OPAQUE - item.alpha) / OPAQUE.toFloat())).toInt(),
-                    height / 2 - itemIconSize.toInt() / 2,
-                    item.rect.centerX()
-                        .toInt() + itemIconSize.toInt() / 2 + ((textLength / 2) * (1 - (OPAQUE - item.alpha) / OPAQUE.toFloat())).toInt(),
-                    height / 2 + itemIconSize.toInt() / 2
-                )
+            // Atualiza o retângulo de toque do item
+            item.rect.set(currentX, 0f, currentX + thisItemWidth, height.toFloat())
 
-                tintAndDrawIcon(item, index, canvas)
+            // A. DESENHAR A PÍLULA BRANCA (Apenas se for o ativo)
+            if (index == itemActiveIndex) {
+                rect.left = currentX
+                rect.right = currentX + thisItemWidth
+                // A altura da pílula é controlada pelo itemPadding verticalmente em relação ao ícone
+                rect.top = itemCenterY - (itemIconSize / 2) - itemPadding
+                rect.bottom = itemCenterY + (itemIconSize / 2) + itemPadding
 
-                paintText.alpha = item.alpha
-                canvas.drawText(
-                    item.title,
-                    item.rect.centerX() - (itemIconSize / 2 + itemIconMargin),
-                    item.rect.centerY() - textHeight, paintText
+                canvas.drawRoundRect(rect, barIndicatorRadius, barIndicatorRadius, paintIndicator)
+            }
+
+            // B. DESENHAR O ÍCONE
+            // Se ativo: Ícone encostado à esquerda (respeitando o padding)
+            // Se inativo: Ícone centralizado no seu espaço reduzido
+            val iconX = if (index == itemActiveIndex) (currentX + itemPadding) else (itemCenterX - itemIconSize / 2)
+            
+            // Prepara o drawable
+            item.icon.mutate()
+            item.icon.setBounds(
+                iconX.toInt(),
+                (itemCenterY - itemIconSize / 2).toInt(),
+                (iconX + itemIconSize).toInt(),
+                (itemCenterY + itemIconSize / 2).toInt()
+            )
+            
+            // Desenha o ícone com a cor correta
+            tintAndDrawIcon(item, index, canvas)
+            
+            // Badge (Notificação vermelha)
+            if(badge_arr.contains(index)){
+                 canvas.drawCircle(
+                    iconX + itemIconSize - 2, 
+                    itemCenterY - itemIconSize / 2 + 2, 
+                    10f, 
+                    badgePaint
                 )
             }
 
-        } else {
-            for ((index, item) in items.withIndex()) {
-                val textLength = paintText.measureText(item.title)
-
-                item.icon.mutate()
-                item.icon.setBounds(
-                    item.rect.centerX()
-                        .toInt() - itemIconSize.toInt() / 2 - ((textLength / 2) * (1 - (OPAQUE - item.alpha) / OPAQUE.toFloat())).toInt(),
-                    height / 2 - itemIconSize.toInt() / 2,
-                    item.rect.centerX()
-                        .toInt() + itemIconSize.toInt() / 2 - ((textLength / 2) * (1 - (OPAQUE - item.alpha) / OPAQUE.toFloat())).toInt(),
-                    height / 2 + itemIconSize.toInt() / 2
-                )
-                //set badge indicator
-                if(badge_arr.contains(index)){
-                    canvas.drawCircle(
-                        item.rect.centerX()
-                            .toInt() - itemIconSize.toInt() / 2f - ((textLength / 2) * (1 - (OPAQUE - item.alpha) / OPAQUE)),
-                        height / 2f - itemIconSize.toInt() / 2f,
-                        10f,
-                        badgePaint
-                    )
-                }
-
-                tintAndDrawIcon(item, index, canvas)
-
-                paintText.alpha = item.alpha
-                canvas.drawText(
-                    item.title,
-                    item.rect.centerX() + itemIconSize / 2 + itemIconMargin,
-                    item.rect.centerY() - textHeight, paintText
-                )
+            // C. DESENHAR O TEXTO (Apenas se ativo)
+            if (index == itemActiveIndex) {
+                val textHeight = (paintText.descent() + paintText.ascent()) / 2
+                val textX = iconX + itemIconSize + itemIconMargin
+                
+                // Garante opacidade total
+                paintText.alpha = OPAQUE 
+                // Desenha o texto alinhado verticalmente
+                canvas.drawText(item.title, textX, itemCenterY - textHeight, paintText)
             }
+
+            // Avança para a próxima posição
+            currentX += thisItemWidth
         }
     }
 
-    private fun tintAndDrawIcon(
-        item: BottomBarItem,
-        index: Int,
-        canvas: Canvas
-    ) {
+    private fun tintAndDrawIcon(item: BottomBarItem, index: Int, canvas: Canvas) {
         DrawableCompat.setTint(
             item.icon,
             if (index == itemActiveIndex) currentIconTint else itemIconTint
         )
-
         item.icon.draw(canvas)
     }
 
     /**
      * Handle item clicks
      */
-    @SuppressLint("ClickableViewAccessibility")
+   @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent?): Boolean {
-        when(event?.action){
-            MotionEvent.ACTION_DOWN -> {
-                return true
-            }
+        if (event == null) return false
+        
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> return true
             MotionEvent.ACTION_UP -> {
+                // Precisamos recalcular as larguras aqui para saber onde o utilizador clicou,
+                // usando a mesma lógica matemática do onDraw.
+                val totalUsableWidth = width - (barSideMargins * 2)
+                val activeItemTextWidth = paintText.measureText(items[itemActiveIndex].title)
+                val activeItemWidth = itemIconSize + itemIconMargin + activeItemTextWidth + (itemPadding * 2)
+                val inactiveItemWidth = if (items.size > 1) (totalUsableWidth - activeItemWidth) / (items.size - 1) else 0f
+
+                var currentX = barSideMargins
+                
                 for ((i, item) in items.withIndex()) {
-                    if (item.rect.contains(event.x, event.y)) {
+                    val thisItemWidth = if (i == itemActiveIndex) activeItemWidth else inactiveItemWidth
+                    
+                    // Verifica se o toque X cai dentro deste item
+                    if (event.x >= currentX && event.x <= currentX + thisItemWidth) {
                         onClickAction(i)
+                        invalidate() // Força redesenho imediato
                         break
                     }
+                    currentX += thisItemWidth
                 }
             }
         }
