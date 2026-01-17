@@ -376,35 +376,52 @@ class SmoothBottomBar @JvmOverloads constructor(
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
 
-        var lastX = barSideMargins
-        itemWidth = (width - (barSideMargins * 2)) / items.size
+var lastX = barSideMargins
 
-        // reverse items layout order if layout direction is RTL
-        val itemsToLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1
-            && layoutDirection == LAYOUT_DIRECTION_RTL
-        ) items.reversed() else items
+val totalWidth = width - (barSideMargins * 2)
+val activeFactor = 1.8f   // aumenta o espaço do item selecionado
+val normalFactor = 1f
 
-        for (item in itemsToLayout) {
-            // Prevent text overflow by shortening the item title
-            var shorted = false
-            while (paintText.measureText(item.title) > itemWidth - itemIconSize - itemIconMargin - (itemPadding * 2)) {
-                item.title = item.title.dropLast(1)
-                shorted = true
-            }
+val totalFactor =
+    (items.size - 1) * normalFactor + activeFactor
 
-            // Add ellipsis character to item text if it is shorted
-            if (shorted) {
-                item.title = item.title.dropLast(1)
-                item.title += context.getString(R.string.ellipsis)
-            }
+val normalWidth = totalWidth * (normalFactor / totalFactor)
+val activeWidth = totalWidth * (activeFactor / totalFactor)
 
-            item.rect = RectF(lastX, 0f, itemWidth + lastX, height.toFloat())
-            lastX += itemWidth
-        }
+val itemsToLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1
+    && layoutDirection == LAYOUT_DIRECTION_RTL
+) items.reversed() else items
 
-        // Set initial active item
-        applyItemActiveIndex()
+for ((index, item) in itemsToLayout.withIndex()) {
+
+    val widthItem =
+        if (index == itemActiveIndex) activeWidth else normalWidth
+
+    var shorted = false
+    while (paintText.measureText(item.title) >
+        widthItem - itemIconSize - itemIconMargin - (itemPadding * 2)
+    ) {
+        item.title = item.title.dropLast(1)
+        shorted = true
     }
+
+    if (shorted) {
+        item.title = item.title.dropLast(1)
+        item.title += context.getString(R.string.ellipsis)
+    }
+
+    item.rect = RectF(
+        lastX,
+        0f,
+        lastX + widthItem,
+        height.toFloat()
+    )
+
+    lastX += widthItem
+}
+
+applyItemActiveIndex()
+
 
 
     fun setBadge(pos:Int){
@@ -628,6 +645,8 @@ class SmoothBottomBar @JvmOverloads constructor(
                 start()
             }
         }
+        requestLayout()
+        invalidate()
     }
 
     private fun animateAlpha(item: BottomBarItem, to: Int) {
